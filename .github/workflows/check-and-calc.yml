@@ -1,0 +1,98 @@
+name: Check And Calculate PKG_HASH
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 每天午夜运行一次
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "Makefile"
+
+permissions:
+  contents: write
+
+jobs:
+  check_and_calc:
+    name: Check upstream and calculate PKG_HASH
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 Check for updates
+        id: check
+        run: |
+          set -euo pipefail
+
+          # 1. 获取本地 Makefile 中的当前版本
+          CURRENT_VER=$(grep '^PKG_VERSION:=' Makefile | awk -F= '{print $2}' | tr -d '[:space:]')
+          
+          # 2. 通过 GitHub API 获取 netbird 的最新 Release Tag (并去掉 'v' 前缀)
+          REMOTE_VER=$(curl -s "https://api.github.com/repos/netbirdio/netbird/releases/latest" | jq -r '.tag_name' | sed 's/^v//')
+          
+          echo "Current: $CURRENT_VER"
+          echo "Remote:  $REMOTE_VER"
+
+          if [ -z "$REMOTE_VER" ] || [ "$REMOTE_VER" = "null" ]; then
+            echo "❌ Failed to get remote version."
+            exit 1
+          fi
+
+          if [ "$CURRENT_VER" = "$REMOTE_VER" ]; then
+            echo "✅ Already up to date."
+            echo "updated=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "🚀 New version found! Updating Makefile..."
+
+          # 3. 替换 Makefile 中的 PKG_VERSION
+          sed -i "s|^PKG_VERSION:=.*|PKG_VERSION:=$REMOTE_VER|" Makefile
+
+          echo "updated=true" >> $GITHUB_OUTPUT
+          echo "new_ver=$REMOTE_VER" >> $GITHUB_OUTPUT
+
+      - name: 📥 Download source and Calculate Hash manually
+        id: calc
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          NEW_VER=${{ steps.check.outputs.new_ver }}
+          
+          # 拼接对应版本的源码包下载链接 (对应 Makefile 中的 PKG_SOURCE_URL)
+          TAR_URL="https://codeload.github.com/netbirdio/netbird/tar.gz/v${NEW_VER}?"
+          
+          echo "⬇️ Downloading source: $TAR_URL"
+          wget -qO netbird.tar.gz "$TAR_URL"
+          
+          # 4. 计算 SHA256 Hash
+          NEW_HASH=$(sha256sum netbird.tar.gz | awk '{print $1}')
+          echo "🧮 Calculated Hash: $NEW_HASH"
+          
+          if [ -z "$NEW_HASH" ]; then
+            echo "❌ Failed to calculate new hash."
+            exit 1
+          fi
+          
+          # 5. 替换 Makefile 中的 PKG_HASH
+          sed -i "s|^PKG_HASH:=.*|PKG_HASH:=$NEW_HASH|" Makefile
+
+      - name: 📝 Commit and Push changes
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Makefile
+          
+          # 检查是否有文件改动，避免空提交报错
+          if git diff-index --quiet HEAD --; then
+            echo "ℹ️ No changes to commit."
+            exit 0
+          fi
+          
+          NEW_VER=${{ steps.check.outputs.new_ver }}
+          git commit -m "chore: update netbird to v$NEW_VER"
+          git push
