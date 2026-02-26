@@ -22,15 +22,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - version: openwrt-24.10
-            target: x86_64
-            sdk_url: "https://downloads.openwrt.org/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-          - version: openwrt-24.10
-            target: aarch64_cortex-a53
-            sdk_url: https://downloads.openwrt.org/releases/24.10.5/targets/qualcommax/ipq807x/openwrt-sdk-24.10.5-qualcommax-ipq807x_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-          - version: openwrt-24.10
-            target: arm_cortex-a7_neon-vfpv4
-            sdk_url: https://downloads.openwrt.org/releases/24.10.5/targets/ipq40xx/generic/openwrt-sdk-24.10.5-ipq40xx-generic_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
+          - platform: x86_64
+            url_sdk: https://downloads.openwrt.org/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            sdk_ver: "24.10"
+
+          - platform: aarch64_cortex-a53
+            url_sdk: https://downloads.openwrt.org/releases/24.10.5/targets/qualcommax/ipq807x/openwrt-sdk-24.10.5-qualcommax-ipq807x_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            sdk_ver: "24.10"
+
+          - platform: arm_cortex-a7_neon-vfpv4
+            url_sdk: https://downloads.openwrt.org/releases/24.10.5/targets/ipq40xx/generic/openwrt-sdk-24.10.5-ipq40xx-generic_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
+            sdk_ver: "24.10"
 
     steps:
       - name: 🧾 Checkout repo
@@ -83,12 +85,27 @@ jobs:
           sudo -E apt-get -qq autoremove --purge
           sudo -E apt-get -qq clean
 
+      - name: Cache OpenWrt dl
+        uses: actions/cache@v5
+        with:
+          path: sdk/dl
+          key: ${{ runner.os }}-openwrt-${{ matrix.sdk_ver }}-${{ matrix.platform }}
+
       - name: 🏗️ Initialization environment
         run: |
-          # 1. 下载并解压 SDK (这里以 x86_64 为例，建议在 matrix 中定义 sdk_url)
-          wget -qO sdk.tar.zst "${{ matrix.sdk_url }}"
-          mkdir sdk
-          tar --zstd -xf sdk.tar.zst -C ./sdk --strip-components=1
+          wget ${{ matrix.url_sdk }}
+          file_name=$(echo ${{matrix.url_sdk}} | awk -F/ '{print $NF}')
+          mkdir -p sdk
+          find sdk -mindepth 1 -maxdepth 1 ! -name dl -exec rm -rf {} +
+
+          if [[ $file_name == *.tar.xz ]]; then
+            tar -xJf $file_name -C ./sdk --strip-components=1
+          elif [[ $file_name == *.tar.zst ]]; then
+            tar --zstd -x -f $file_name -C ./sdk --strip-components=1
+          else
+            echo "Unsupported file format: $file_name"
+            exit 1
+           fi
           cd sdk
 
           # 2. 切换 GitHub 源并更新 feeds
