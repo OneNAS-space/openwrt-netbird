@@ -166,10 +166,10 @@ jobs:
             find bin/packages/ -type f -name "*.ipk" 2>/dev/null || echo "No .ipk files in packages directory"
           fi
 
-      - name: 📦 Upload artifact for ${{ matrix.target }}
+      - name: 📦 Upload artifact for (${{ matrix.platform }})
         uses: actions/upload-artifact@v6
         with:
-          name: netbird-${{ matrix.target }}-${{ matrix.version }}
+          name: netbird-${{ matrix.platform }}-${{ matrix.sdk_ver }}
           path: |
             sdk/bin/packages/*/packages/netbird*.ipk
           if-no-files-found: ignore
