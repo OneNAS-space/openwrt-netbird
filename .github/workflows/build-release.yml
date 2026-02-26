@@ -122,6 +122,9 @@ jobs:
           rm -rf feeds/packages/lang/golang
           cp -r temp_resp/lang/golang feeds/packages/lang/
           rm -rf temp_resp
+          echo "Force rebuilding golang host tool..."
+          rm -rf staging_dir/hostpkg/bin/go
+          rm -rf staging_dir/hostpkg/lib/go
           
           # 再次刷新以应用 patch
           ./scripts/feeds update -i
@@ -137,14 +140,17 @@ jobs:
           
           # 将当前仓库代码（父目录）覆盖进去
           echo "Copying custom netbird source to official feed path..."
-          cp -r ../Makefile ../files ./feeds/packages/net/netbird/ 2>/dev/null || cp ../Makefile ./feeds/packages/net/netbird/
+          cp ../Makefile ./feeds/packages/net/netbird/
+          [ -d "../files" ] && cp -r ../files ./feeds/packages/net/netbird/
 
           # 5. 刷新索引确认
+          ./scripts/feeds install -f golang
           ./scripts/feeds install -f netbird
 
       - name: 🧮 Compile netbird
         run: |
           cd sdk
+          export GOPROXY=https://proxy.golang.org,direct
           # 生成 .config 并强制选择 netbird
           echo "CONFIG_PACKAGE_netbird=m" > .config
           
