@@ -74,6 +74,7 @@ jobs:
       - name: 📦 Download & Extract OpenWrt SDK
         if: steps.check.outputs.updated == 'true' && steps.cache.outputs.cache-hit != 'true'
         run: |
+          mkdir -p openwrt-sdk
           wget -q ${{ env.BASE_URL }}/${{ env.SDK_FILE }}
           echo "${{ env.SDK_HASH }}  ${{ env.SDK_FILE }}" | sha256sum -c -
           tar -I zstd -xf ${{ env.SDK_FILE }}
